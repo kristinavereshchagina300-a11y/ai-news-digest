@@ -76,6 +76,8 @@ def summarize(items):
         },
         timeout=60,
     )
+    if response.status_code >= 400:
+        print(f"Anthropic API вернул ошибку {response.status_code}: {response.text}", file=sys.stderr)
     response.raise_for_status()
     data = response.json()
     return "".join(block["text"] for block in data["content"] if block["type"] == "text")
