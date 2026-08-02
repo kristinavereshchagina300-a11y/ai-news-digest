@@ -1,44 +1,73 @@
 """
 AI News Digest Bot
-Читает RSS-ленты про ИИ, суммирует новости через Claude API (через ProxyAPI),
+Читает RSS-ленты про ИИ, суммирует новости через Claude API,
 отправляет дайджест в Telegram.
 """
+
 import os
 import sys
+import time
+from datetime import datetime, timezone, timedelta
+
 import feedparser
 import requests
+
 # ---------- Настройки ----------
+
 RSS_FEEDS = [
     "https://techcrunch.com/tag/artificial-intelligence/feed/",
     "https://www.artificialintelligence-news.com/feed/",
     # добавь свои источники сюда
 ]
+
 MAX_ITEMS = 3  # сколько новостей брать за раз
+HOURS_LOOKBACK = 26  # берём новости не старше 26 часов (небольшой запас на случай сдвига по расписанию)
+
 PROXYAPI_KEY = os.environ["PROXYAPI_KEY"]
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+
 ANTHROPIC_URL = "https://api.proxyapi.ru/anthropic/v1/messages"
 TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+
+
 # ---------- Шаг 1. Собираем новости из RSS ----------
+
 def fetch_news():
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=HOURS_LOOKBACK)
     items = []
     for feed_url in RSS_FEEDS:
         feed = feedparser.parse(feed_url)
-        for entry in feed.entries[:MAX_ITEMS]:
+        for entry in feed.entries:
+            published = entry.get("published_parsed") or entry.get("updated_parsed")
+            if not published:
+                continue  # нет даты — пропускаем, чтобы не слать старое повторно
+            published_dt = datetime.fromtimestamp(time.mktime(published), tz=timezone.utc)
+            if published_dt < cutoff:
+                continue  # новость старее суток — пропускаем
             items.append({
                 "title": entry.get("title", ""),
                 "summary": entry.get("summary", entry.get("description", "")),
                 "link": entry.get("link", ""),
+                "published": published_dt,
             })
+
+    # свежие новости сначала
+    items.sort(key=lambda x: x["published"], reverse=True)
     return items[:MAX_ITEMS]
-# ---------- Шаг 2. Суммаризация через Claude (через ProxyAPI) ----------
+
+
+# ---------- Шаг 2. Суммаризация через Claude ----------
+
 def summarize(items):
     if not items:
         return "Сегодня новых новостей не найдено."
+
     news_text = "\n\n".join(
         f"Заголовок: {item['title']}\nОписание: {item['summary']}\nСсылка: {item['link']}"
         for item in items
     )
+
     prompt = (
         "Вот несколько новостей про ИИ:\n\n"
         f"{news_text}\n\n"
@@ -47,26 +76,30 @@ def summarize(items):
         "Формат: эмодзи + короткий заголовок, затем объяснение. "
         "В конце добавь ссылку на источник."
     )
+
     response = requests.post(
         ANTHROPIC_URL,
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {PROXYAPI_KEY}",
+            "x-api-key": PROXYAPI_KEY,
             "anthropic-version": "2023-06-01",
         },
         json={
-            "model": "claude-sonnet-4-6",
+            "model": "claude-sonnet-5",
             "max_tokens": 1024,
             "messages": [{"role": "user", "content": prompt}],
         },
         timeout=60,
     )
     if response.status_code >= 400:
-        print(f"ProxyAPI/Anthropic вернул ошибку {response.status_code}: {response.text}", file=sys.stderr)
+        print(f"Anthropic API вернул ошибку {response.status_code}: {response.text}", file=sys.stderr)
     response.raise_for_status()
     data = response.json()
     return "".join(block["text"] for block in data["content"] if block["type"] == "text")
+
+
 # ---------- Шаг 3. Отправка в Telegram ----------
+
 def send_to_telegram(text):
     response = requests.post(
         TELEGRAM_URL,
@@ -79,7 +112,10 @@ def send_to_telegram(text):
         timeout=30,
     )
     response.raise_for_status()
+
+
 # ---------- Запуск ----------
+
 def main():
     try:
         news = fetch_news()
@@ -89,5 +125,7 @@ def main():
     except Exception as e:
         print(f"Ошибка: {e}", file=sys.stderr)
         sys.exit(1)
+
+
 if __name__ == "__main__":
     main()
