@@ -17,6 +17,10 @@ import requests
 RSS_FEEDS = [
     "https://techcrunch.com/tag/artificial-intelligence/feed/",
     "https://www.artificialintelligence-news.com/feed/",
+    "https://venturebeat.com/category/ai/feed/",
+    "https://www.technologyreview.com/topic/artificial-intelligence/feed",
+    "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+    "https://arstechnica.com/ai/feed/",
     # добавь свои источники сюда
 ]
 
