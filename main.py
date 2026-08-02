@@ -21,6 +21,7 @@ RSS_FEEDS = [
     "https://www.technologyreview.com/topic/artificial-intelligence/feed",
     "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
     "https://arstechnica.com/ai/feed/",
+    "https://raw.githubusercontent.com/taobojlen/anthropic-rss-feed/main/anthropic_news_rss.xml",  # неофициальный мирор новостей Anthropic (у них нет своего RSS)
     # добавь свои источники сюда
 ]
 
